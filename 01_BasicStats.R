@@ -217,3 +217,4 @@ val_label(dat00$CORON, 1) <- "Yes"
 
 dat00 %>% select(CORON) %>% frq()
 
+# End of the file
