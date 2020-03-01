@@ -1,0 +1,66 @@
+---
+title: "Some Examples on R Notebook"
+author: "Akihito Kamata"
+date: "January 17, 2020"
+output: html_notebook
+---
+
+### Preparation
+Load required pachages.
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(haven)
+library(psych)
+library(sjmisc)
+library(sjPlot)
+```
+
+Read SPSS data file. `haven` package is required for `read_spss` function.
+```{r}
+dat10 <- read_spss("Data/Chapman.sav")
+```
+
+### Descriptive Statistics
+Run descriptives for selected variables: Use `describe` in `psych` package.
+```{r}
+dat10 %>% select(SYSBP, DIABP, CHOLES) %>% describe(fast=T)
+```
+
+The mean and the standard deviation of systolic blood pressure was $M=121.64$ and $sd=16.70$. 
+
+Run descriptives by groups: Use `describeBy` in `psych` package.
+```{r}
+dat10 %>% select(SYSBP, DIABP, CHOLES) %>% describeBy(group=dat10$CORON, fast=T)
+```
+
+Run frequency table for categorical variables by "frq" function in the `sjmisc` package. 
+```{r}
+dat10 %>% select(CORON) %>% frq()
+```
+
+### Plots
+Scatter plot with fitted line.
+```{r}
+dat10 %>% 
+  ggplot(aes(x=SYSBP, y=DIABP)) + 
+  geom_point() +
+  theme_bw() +
+  stat_smooth(method = "lm", formula = y ~ x)
+```
+
+Bargraphs for Likert-type scale items.
+```{r}
+lik.dat <- read_csv("Data/likert.csv")
+labels01 <- c("Very dissatisfied",
+              "Somewhat dissatisfied",
+              "Neither satisfied or dissatisfied",
+              "Somewhat satisfied",
+              "Very satisfied")
+lik.dat %>% select(item1:item5) %>%  
+  plot_likert(cat.neutral = 3,
+              grid.range = c(1.5, .5),
+              values = "sum.outside",
+              legend.labels = labels01,
+              show.prc.sign = T) + theme_bw()
+```
+

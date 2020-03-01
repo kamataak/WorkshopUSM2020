@@ -1,0 +1,126 @@
+---
+title: "Iterations in R"
+author: "Akihito Kamata"
+date: "February 24, 2020"
+output: html_notebook
+---
+## 0. Motivation
+It may be your interest to run many analyses and summarize the results. Of course, we can write analysis specifications for each of analyses. However, in many cases, there are more efficient way to accomplish it. 
+
+## 1. Setups
+Load required package.
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+## 1. Data
+Data file `orf_ex.csv` is read in, and variable names are printed.
+```{r}
+orf.dat <- read.csv("Data/orf.csv")
+colnames(orf.dat)
+```
+
+## 2. Simple example
+Let's consider a very simple scenario, where you want to compute the mean for the 5 variables in `orf.dat`. 
+```{r}
+mean(orf.dat[[1]], na.rm = T)
+mean(orf.dat[[2]], na.rm = T)
+mean(orf.dat[[3]], na.rm = T)
+mean(orf.dat[[4]], na.rm = T)
+mean(orf.dat[[5]], na.rm = T)
+```
+
+These operations can be simplified by a traditional loop approach as follows.
+```{r}
+output <- c()
+for (i in seq_along(orf.dat)) {      
+  output[i] <- mean(orf.dat[[i]], na.rm = T)
+}
+output
+```
+
+The same operations can be also done by a more moderan `tidyverse` approach with `map` function. Here, `map_dbl` is used to output the results in a vector form. If `map` is used, the output will be in a form of a list.
+```{r}
+orf.dat %>% map_dbl(mean, na.rm=T)
+```
+
+Note that we are allowed to specify only one function within a `map` function. If we need to operate more than one function for each iteration, we need to create a function of our own for the `map` function to run. As a simple example, let's say we want to run `mean` and `median`.
+```{r}
+fun1 <- function(x){
+  tibble(x.mean = mean(x, na.rm = T),
+         x.median = median(x, na.rm = T))
+}
+orf.dat %>% map(fun1) %>% bind_rows()
+```
+
+## More Complicated Example
+Let's assume we are interested in exploring what linear regression model would best predict `wcpm`. We can come up with "many" possible combinations of predictors and their interaction effects. It is possible to write out a regression analyses by `lm` function for each model and store the results for each model. However, the use of `map` function will make the operation more manageable.
+
+Let's take a look at the correlation matrix first
+```{r}
+cor(orf.dat, use = "pairwise.complete.obs") %>% round(3)
+```
+
+### Step 1: Set up models
+Write out regression equations.
+```{r}
+eqx <- list()
+eqx[[1]] <- "wcpm ~ v1"
+eqx[[2]] <- "wcpm ~ v2"
+eqx[[3]] <- "wcpm ~ v3"
+eqx[[4]] <- "wcpm ~ v4"
+eqx[[5]] <- "wcpm ~ v1 + v2"
+eqx[[6]] <- "wcpm ~ v1 + v3"
+eqx[[7]] <- "wcpm ~ v1 + v4"
+eqx[[8]] <- "wcpm ~ v1 * v2"
+eqx[[9]] <- "wcpm ~ v1 * v3"
+eqx[[10]] <- "wcpm ~ v1 * v4"
+eqx[[11]] <- "wcpm ~ v2 + v3"
+eqx[[12]] <- "wcpm ~ v2 + v4"
+eqx[[13]] <- "wcpm ~ v2 * v3"
+eqx[[14]] <- "wcpm ~ v2 * v4"
+eqx[[15]] <- "wcpm ~ v3 + v4"
+eqx[[16]] <- "wcpm ~ v3 * v4"
+eqx[[17]] <- "wcpm ~ v1 + v2 + v3"
+eqx[[18]] <- "wcpm ~ v1 + v2 * v3"
+eqx[[19]] <- "wcpm ~ v1 * v2 + v3"
+eqx[[20]] <- "wcpm ~ v1 * v2 * v3"
+eqx[[21]] <- "wcpm ~ v2 + v3 + v4"
+eqx[[22]] <- "wcpm ~ v2 + v3 * v4"
+eqx[[23]] <- "wcpm ~ v2 * v3 + v4"
+eqx[[24]] <- "wcpm ~ v2 * v3 * v4"
+eqx[[25]] <- "wcpm ~ v1 + v3 + v4"
+eqx[[26]] <- "wcpm ~ v1 + v3 * v4"
+eqx[[27]] <- "wcpm ~ v1 * v3 + v4"
+eqx[[28]] <- "wcpm ~ v1 * v3 * v4"
+eqx[[29]] <- "wcpm ~ v1 + v2 + v3 + v4"
+eqx[[30]] <- "wcpm ~ v1 + v2 + v3 * v4"
+eqx[[31]] <- "wcpm ~ v1 + v2 * v3 + v4"
+eqx[[32]] <- "wcpm ~ v1 * v2 + v3 + v4"
+eqx[[33]] <- "wcpm ~ v1 * v4 + v2 + v3"
+eqx[[34]] <- "wcpm ~ v1 + v2 * v4 + v3"
+eqx[[35]] <- "wcpm ~ v1 + v2 * v3 * v4"
+eqx[[36]] <- "wcpm ~ v1 * v2 * v3 + v4"
+eqx[[37]] <- "wcpm ~ v1 * v2 * v3 * v4"
+```
+
+Run linear regressions
+```{r}
+reg.out <- map(eqx, lm, data=orf.dat)
+```
+
+Extract $R^2$ from each regression analysis.
+```{r}
+sum.out <- map(reg.out, function(x) {summary(x)$r.squared})
+```
+
+Create a table and sort by the size of $R^2$.
+```{r}
+data.frame(
+  model = eqx %>% unlist(),
+  r.sq = sum.out %>% unlist()) %>% 
+arrange(desc(r.sq))
+```
+
+If you are interested in learning more about the `map` function, https://r4ds.had.co.nz/iteration.html is a good place to start.
+
