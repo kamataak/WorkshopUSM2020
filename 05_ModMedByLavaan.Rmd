@@ -1,0 +1,115 @@
+---
+title: "Moderated Mediation by lavaan"
+author: "Akihito Kamata"
+date: "March 14, 2020"
+output: html_notebook
+---
+
+## 0. Setups
+Load required packages.
+```{r message=FALSE}
+library(tidyverse)
+library(lavaan)
+library(psych)
+```
+
+## 1. Introduction
+### Data
+This example is example 2.25 in Muthen, Muthen, & Asparouhov (p.108, 2016), which was originally from data from an automobile parts work team study by Kellam et al. (2008).  
+
+There are four variables ($n$ = 60):  
+  - Dysfunctional behavior of team members (dysfunc: $x_i$)  
+  - Team performance (performance: $y_i$)  
+  - Negative affective tone (negtone: $m_i$)  
+  - Negative expressibility (remove: $z_i$)  
+
+The model to be analyzed is as follows:  
+![ ](figures/ModelEx2.25.png){width=350}
+  
+### Moderated Mediation
+For this model, the mediation effect of $x_i$ on $y_i$ through the mediator $m_i$ depends on the value of the covariate $z_i$ as $(\beta_1\gamma_1 + \beta_4\gamma_1z_i)(x_1-x_0)$. Here, $x_1-x_0$ can be the standard deviation of variable $x$. This way, the mediation effect is scaled *per* standard deviation. Note that the formula for the moderated mediation depends on the type of the model. This particular example is characterized as Model 14 in Hays (2018). 
+
+### Read Data
+Read and prepare data. Also, run descriptive statistics.
+```{r}
+teams <- read.table("Data/teams.txt")
+colnames(teams) <- c("dysfunc","negtone","negexp","perform")
+teams$mz <- teams$negtone * teams$negexp
+teams %>% describe(fast=T)
+```
+
+### Specifications for lavaan
+Assume we would like to set up evaluation points of moderated mediation to be -0.4 to 0.6 with an increment of 0.1 on the value of `negtone`. Also, set $x_0=.035$ as the mean of `dysfunc`, and $x_1=.4038$ as $\bar{x}+1SD$, such that $x_1-x_0 = .4038-.035 = .3688$ indicates $1SD$ and the mediation effect is scaled *per* 1SD change of $x_i$. If a model would be written manually for `lavaan`, it will look like this:
+```{}
+ex2.25.inp <- '
+perform ~ b1*negtone + dysfunc + negexp + b4*mz
+negtone ~ g1*dysfunc
+med1 := (b1*g1 + b4*g1*(-.4))*.3688
+med2 := (b1*g1 + b4*g1*(-.3))*.3688
+med3 := (b1*g1 + b4*g1*(-.2))*.3688
+med4 := (b1*g1 + b4*g1*(-.1))*.3688
+med5 := (b1*g1 + b4*g1*(0))*.3688
+med6 := (b1*g1 + b4*g1*(.1))*.3688
+med7 := (b1*g1 + b4*g1*(.2))*.3688
+med8 := (b1*g1 + b4*g1*(.3))*.3688
+med9 := (b1*g1 + b4*g1*(.4))*.3688
+med10 := (b1*g1 + b4*g1*(.5))*.3688
+med11 := (b1*g1 + b4*g1*(.6))*.3688
+'
+```
+
+However, this will become quite labor intensive, as we wish to increase the number of evaluation points. To overcome this, we can code in R to generate above model specifications. This way, we can easily specify many evaluation points with minimal effort. Note that we specify the lowest value (`from` = ), highest value (`to` = ) and increment (`by` = ) in the `seq` function below.
+```{r}
+eval.pts <- seq(from = -.4, to = .6, by = .1)
+
+main.part <- c(
+'perform ~ b1*negtone + dysfunc + negexp + b4*mz',
+'negtone ~ g1*dysfunc')
+med.part <- 
+  capture.output(
+    for (i in 1:length(eval.pts)){
+      cat('med', i, ':= (b1*g1 + b4*g1*(', eval.pts[i], '))*.3688', 
+          sep='', fill=T)
+      })
+ex2.25.inp <- c(main.part, med.part) %>% paste0(collapse = ' \n ')
+```
+
+Run the model with 1,000 bootstrap iterations.
+```{r}
+ex2.25.out <- sem(ex2.25.inp, data=teams, se="boot", bootstrap=1000)
+```
+
+### View a summary output
+As you can see, there are multiple "defined parameters", which are mediation effects at different evaluation points.
+```{r}
+summary(ex2.25.out)
+```
+
+### Extract parameter estimates
+The table including lower and upper bounds of Bootstrap confidence intervals.
+```{r}
+parameterEstimates(ex2.25.out)
+```
+
+Now, extract only the point estimates and lower & upper bounds of CI for mediation effects. Since mediation effects have lavaan operator `:=`, we will first filter the above parameter estimate data table by `filter(op == ":=")`. Then, select only `est` (point estimates of mediation effects), `ci.lower` (lower bound of 95% CI) and `ci.upper` (upper bound of 95% CI). Store the extracted moderated mediation results as `modmed.out`. 
+```{r}
+modmed.out <- 
+  parameterEstimates(ex2.25.out) %>% 
+  filter(op == ":=") %>% 
+  select(est, ci.lower, ci.upper) %>% 
+  cbind(eval.pts, .)
+modmed.out
+```
+
+Inspection of the above table indicates that the 95% CI did not captures 0, when the evaluation point was -0.1 or higher. In other words, the mediation effect was statistically significant at $\alpha=.05$ level, when the value of the covariate `negexp` was -0.1 or larger.
+
+### Plotting Moderated Mediation
+We can plot the results. This requires to reshape the result data before using `ggplot`.
+```{r}
+modmed.out %>% 
+  gather("estimates","values", 2:4) %>% 
+  ggplot(aes(x=eval.pts, y=values, colour=estimates)) + 
+    geom_line() + ylab("Mediation Effect") + xlab("Value of Covariate")
+```
+
+As we can see, the upper bound of the 95% CI intersects with 0, somewhere between -0.2 and -0.1, which means that the region of statistical significance is when the value of covariate was about -0.15 or larger. If we need to derive a more accurate threshold of statistical significance, we need to run the analysis with evaluation points with smaller increment, such as 0.01. 

@@ -75,7 +75,7 @@ MA.fit01 <- sem(MA.mod01, data=protest.dat, se="boot", bootstrap=1000)
 
 View summary results.
 ```{r}
-summary(MA.fit01)
+summary(MA.fit01, fit=T)
 ```
 
 Extract model parameter estimates and 95% CIs.
